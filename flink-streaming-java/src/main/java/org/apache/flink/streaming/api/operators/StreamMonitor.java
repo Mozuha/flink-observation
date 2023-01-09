@@ -62,7 +62,6 @@ public class StreamMonitor<T> implements Serializable {
     private int inputCounter;
     private int outputCounter;
     private boolean localMode;
-    private boolean distributedLogging;
     private int joinSize1 = 0;
     private int joinSize2 = 0;
     private int joinPartners = 0;
@@ -197,11 +196,6 @@ public class StreamMonitor<T> implements Serializable {
             long elapsedTime = System.nanoTime() - this.startTime;
             if (elapsedTime > duration) {
                 observationMade = true;
-                Map<String, String> globalJobParametersMap =
-                        config.getGlobalJobParameters().toMap();
-                // initialize loggers
-                this.distributedLogging =
-                        globalJobParametersMap.get("-distributedLogging").equals("true");
                 // put tupleWidthIn into description
                 if (this.operator instanceof WrappingFunction) { // join operator
                     description.put(
@@ -248,12 +242,10 @@ public class StreamMonitor<T> implements Serializable {
                             "StreamMonitor: cannot find id to log to for " + this.operator);
                 }
                 // Map<String, String> allVariables = this.operator.metrics.getAllVariables();
-                if (this.description.get("id") != null && this.distributedLogging) {
+                if (this.description.get("id") != null) {
                     StreamMonitorMongoClient.singleton(this.config)
                             .getMongoCollectionObservations()
                             .insertOne(json);
-                } else if (this.description.get("id") != null && !this.distributedLogging) {
-                    logger.info(json.toJSONString());
                 }
             }
         }
