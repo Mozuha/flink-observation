@@ -103,6 +103,31 @@ public class WindowOperatorBuilder<T, K, W extends Window> {
         this.trigger = trigger;
     }
 
+    private static String generateFunctionName(Function function) {
+        Class<? extends Function> functionClass = function.getClass();
+        if (functionClass.isAnonymousClass()) {
+            // getSimpleName returns an empty String for anonymous classes
+            Type[] interfaces = functionClass.getInterfaces();
+            if (interfaces.length == 0) {
+                // extends an existing class (like RichMapFunction)
+                Class<?> functionSuperClass = functionClass.getSuperclass();
+                return functionSuperClass.getSimpleName()
+                        + functionClass
+                                .getName()
+                                .substring(functionClass.getEnclosingClass().getName().length());
+            } else {
+                // implements a Function interface
+                Class<?> functionInterface = functionClass.getInterfaces()[0];
+                return functionInterface.getSimpleName()
+                        + functionClass
+                                .getName()
+                                .substring(functionClass.getEnclosingClass().getName().length());
+            }
+        } else {
+            return functionClass.getSimpleName();
+        }
+    }
+
     public void trigger(Trigger<? super T, ? super W> trigger) {
         Preconditions.checkNotNull(trigger, "Window triggers cannot be null");
 
@@ -209,7 +234,8 @@ public class WindowOperatorBuilder<T, K, W extends Window> {
         if (evictor != null) {
             return buildEvictingWindowOperator(
                     new InternalIterableWindowFunction<>(
-                            new AggregateApplyWindowFunction<>(aggregateFunction, windowFunction)));
+                            new AggregateApplyWindowFunction<>(aggregateFunction, windowFunction)),
+                    description);
         } else {
             AggregatingStateDescriptor<T, ACC, V> stateDesc =
                     new AggregatingStateDescriptor<>(
@@ -347,31 +373,6 @@ public class WindowOperatorBuilder<T, K, W extends Window> {
                 allowedLateness,
                 lateDataOutputTag,
                 description);
-    }
-
-    private static String generateFunctionName(Function function) {
-        Class<? extends Function> functionClass = function.getClass();
-        if (functionClass.isAnonymousClass()) {
-            // getSimpleName returns an empty String for anonymous classes
-            Type[] interfaces = functionClass.getInterfaces();
-            if (interfaces.length == 0) {
-                // extends an existing class (like RichMapFunction)
-                Class<?> functionSuperClass = functionClass.getSuperclass();
-                return functionSuperClass.getSimpleName()
-                        + functionClass
-                                .getName()
-                                .substring(functionClass.getEnclosingClass().getName().length());
-            } else {
-                // implements a Function interface
-                Class<?> functionInterface = functionClass.getInterfaces()[0];
-                return functionInterface.getSimpleName()
-                        + functionClass
-                                .getName()
-                                .substring(functionClass.getEnclosingClass().getName().length());
-            }
-        } else {
-            return functionClass.getSimpleName();
-        }
     }
 
     public String generateOperatorName() {

@@ -22,8 +22,10 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.java.operators.translation.WrappingFunction;
 import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.runtime.metrics.groups.InternalOperatorMetricGroup;
+import org.apache.flink.streaming.api.datastream.CoGroupedStreams;
 import org.apache.flink.streaming.runtime.operators.util.StreamMonitorMongoClient;
 import org.apache.flink.streaming.runtime.operators.windowing.WindowOperator;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import org.json.simple.JSONObject;
 import org.slf4j.Logger;
@@ -57,6 +59,7 @@ public class StreamMonitor<T> implements Serializable {
     private final boolean disableStreamMonitor;
     private WindowOperator windowOperator = null;
     private boolean initialized;
+    private boolean outputInitialized;
     private boolean observationMade;
     private long startTime;
     private int inputCounter;
@@ -82,6 +85,7 @@ public class StreamMonitor<T> implements Serializable {
         this.description.put("tupleWidthIn", -1);
         this.description.put("tupleWidthOut", -1);
         this.initialized = false;
+        this.outputInitialized = false;
         this.observationMade = false;
         this.operator = operator;
         this.windowLengths = new ArrayList<>();
@@ -93,10 +97,6 @@ public class StreamMonitor<T> implements Serializable {
     }
 
     public <T> void reportInput(T input, ExecutionConfig config) {
-        reportInput(input, config, false);
-    }
-
-    public <T> void reportInput(T input, ExecutionConfig config, Boolean joinStreamLeftSide) {
         try {
             if (this.disableStreamMonitor) {
                 return;
@@ -106,9 +106,11 @@ public class StreamMonitor<T> implements Serializable {
             if (this.operator instanceof WrappingFunction
                     && (this.joinInputWidthLeftSide == -1 || this.joinInputWidthRightSide == -1)) {
                 // store left or right input width of join
-                if (this.joinInputWidthLeftSide != -1 && joinStreamLeftSide) {
+                CoGroupedStreams.TaggedUnion<Tuple, Tuple> unitedTuple =
+                        (CoGroupedStreams.TaggedUnion<Tuple, Tuple>) input;
+                if (this.joinInputWidthLeftSide == -1 && unitedTuple.isOne()) {
                     this.joinInputWidthLeftSide = getTupleSize(input);
-                } else if (this.joinInputWidthRightSide != -1 && !joinStreamLeftSide) {
+                } else if (this.joinInputWidthRightSide == -1) {
                     this.joinInputWidthRightSide = getTupleSize(input);
                 }
             }
@@ -117,7 +119,6 @@ public class StreamMonitor<T> implements Serializable {
                 this.config = config;
                 this.startTime = System.nanoTime();
                 tupleWidthIn = getTupleSize(input);
-                description.put("tupleWidthOut", -1); // not any observation yet
                 prevTicks = new long[CentralProcessor.TickType.values().length];
             }
 
@@ -136,7 +137,10 @@ public class StreamMonitor<T> implements Serializable {
             if (this.disableStreamMonitor) {
                 return;
             }
-            description.put("tupleWidthOut", getTupleSize(output));
+            if (!this.outputInitialized) {
+                this.description.put("tupleWidthOut", getTupleSize(output));
+                this.outputInitialized = true;
+            }
             this.outputCounter++;
             checkIfObservationEnd();
         } catch (Exception e) {
@@ -288,10 +292,26 @@ public class StreamMonitor<T> implements Serializable {
 
     private <T> int getTupleSize(T input) {
         try {
-            Tuple dt = (Tuple) input;
-            return dt.getArity();
-
+            if (input instanceof Tuple) {
+                Tuple dt = (Tuple) input;
+                return dt.getArity();
+            } else if (input instanceof ArrayList) {
+                ArrayList<StreamRecord<Tuple>> streamRecords =
+                        (ArrayList<StreamRecord<Tuple>>) input;
+                return streamRecords.get(0).getValue().getArity();
+            } else if (input instanceof CoGroupedStreams.TaggedUnion) {
+                CoGroupedStreams.TaggedUnion<Tuple, Tuple> combinedTuple =
+                        (CoGroupedStreams.TaggedUnion<Tuple, Tuple>) input;
+                if (combinedTuple.isOne()) {
+                    return combinedTuple.getOne().getArity();
+                } else {
+                    return combinedTuple.getTwo().getArity();
+                }
+            }
+            System.err.println("Cannot get tuple size because class not known to StreamMonitor");
+            return -1;
         } catch (Exception e) {
+            System.err.println("Cannot get tuple size: " + e);
             return -1;
         }
     }

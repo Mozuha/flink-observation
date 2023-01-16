@@ -17,14 +17,12 @@
 
 package org.apache.flink.streaming.runtime.streamrecord;
 
-import org.apache.flink.annotation.Internal;
-
 /**
  * One value in a data stream. This stores the value and an optional associated timestamp.
  *
  * @param <T> The type encapsulated with the stream record.
  */
-@Internal
+/** Flink-Observation: Removed internal annotation to use it in StreamMonitor. */
 public final class StreamRecord<T> extends StreamElement {
 
     /** The actual value held by this record. */
@@ -76,6 +74,15 @@ public final class StreamRecord<T> extends StreamElement {
         }
     }
 
+    public void setTimestamp(long timestamp) {
+        this.timestamp = timestamp;
+        this.hasTimestamp = true;
+    }
+
+    // ------------------------------------------------------------------------
+    //  Updating
+    // ------------------------------------------------------------------------
+
     /**
      * Checks whether this record has a timestamp.
      *
@@ -84,10 +91,6 @@ public final class StreamRecord<T> extends StreamElement {
     public boolean hasTimestamp() {
         return hasTimestamp;
     }
-
-    // ------------------------------------------------------------------------
-    //  Updating
-    // ------------------------------------------------------------------------
 
     /**
      * Replace the currently stored value by the given new value. This returns a StreamElement with
@@ -118,11 +121,6 @@ public final class StreamRecord<T> extends StreamElement {
         this.hasTimestamp = true;
 
         return (StreamRecord<X>) this;
-    }
-
-    public void setTimestamp(long timestamp) {
-        this.timestamp = timestamp;
-        this.hasTimestamp = true;
     }
 
     public void eraseTimestamp() {

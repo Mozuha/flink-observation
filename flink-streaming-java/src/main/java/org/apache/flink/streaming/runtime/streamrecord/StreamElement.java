@@ -18,12 +18,11 @@
 
 package org.apache.flink.streaming.runtime.streamrecord;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.watermarkstatus.WatermarkStatus;
 
 /** An element in a data stream. Can be a record or a Watermark. */
-@Internal
+/** Flink-Observation: Removed internal annotation to use it in StreamMonitor. */
 public abstract class StreamElement {
 
     /**
