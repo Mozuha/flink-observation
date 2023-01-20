@@ -34,7 +34,10 @@ import oshi.SystemInfo;
 import oshi.hardware.CentralProcessor;
 import oshi.hardware.HardwareAbstractionLayer;
 
+import java.io.IOException;
 import java.io.Serializable;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -266,7 +269,13 @@ public class StreamMonitor<T> implements Serializable {
         }
         if (metrics != null) {
             Map<String, String> allVariables = metrics.getAllVariables();
-            String host = allVariables.get("<tm_id>");
+            String host = "no-host-determined";
+            try {
+                host = new String(Files.readAllBytes(Paths.get("/etc/machine-id")));
+            } catch (IOException e) {
+                System.err.println("Cannot get hostname to log out in observations.");
+                e.printStackTrace();
+            }
             String component = allVariables.get("<task_id>");
             if (host != null) {
                 this.description.put("host", host);

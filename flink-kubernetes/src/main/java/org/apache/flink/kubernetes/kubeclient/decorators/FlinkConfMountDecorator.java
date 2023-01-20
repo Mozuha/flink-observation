@@ -84,6 +84,10 @@ public class FlinkConfMountDecorator extends AbstractKubernetesStepDecorator {
                         .withName(FLINK_CONF_VOLUME)
                         .withMountPath(kubernetesComponentConf.getFlinkConfDirInPod())
                         .endVolumeMount()
+                        .addNewVolumeMount()
+                        .withName("machine-id")
+                        .withMountPath("/etc/machine-id")
+                        .endVolumeMount()
                         .build();
 
         return new FlinkPod.Builder(flinkPod)
@@ -117,9 +121,17 @@ public class FlinkConfMountDecorator extends AbstractKubernetesStepDecorator {
                         .endConfigMap()
                         .build();
 
+        final Volume machineIDVolume =
+                new VolumeBuilder()
+                        .withName("machine-id")
+                        .withNewHostPath("/etc/machine-id", "File")
+                        .build();
+
         return new PodBuilder(pod)
                 .editSpec()
                 .addNewVolumeLike(flinkConfVolume)
+                .endVolume()
+                .addNewVolumeLike(machineIDVolume)
                 .endVolume()
                 .endSpec()
                 .build();
