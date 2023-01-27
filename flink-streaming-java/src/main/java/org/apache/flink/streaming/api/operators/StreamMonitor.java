@@ -34,7 +34,9 @@ import oshi.SystemInfo;
 import oshi.hardware.CentralProcessor;
 import oshi.hardware.HardwareAbstractionLayer;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.Serializable;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -271,23 +273,70 @@ public class StreamMonitor<T> implements Serializable {
             Map<String, String> allVariables = metrics.getAllVariables();
             String host = "no-host-determined";
             try {
-                host = new String(Files.readAllBytes(Paths.get("/etc/machine-id")));
+                host =
+                        new String(Files.readAllBytes(Paths.get("/etc/machine-id")))
+                                .replaceAll("[^0-9,a-z,A-Z]", "");
             } catch (IOException e) {
                 System.err.println("Cannot get hostname to log out in observations.");
                 e.printStackTrace();
             }
             String component = allVariables.get("<task_id>");
+            this.description.put("component", component);
             if (host != null) {
                 this.description.put("host", host);
-                this.description.put("component", component);
             }
         }
         return description;
     }
 
     private HashMap<String, Object> addHardwareMetrics(HashMap<String, Object> description) {
+        Integer networkSpeed = 0;
+        // get network speed
+        try {
+            // first determine default network interface
+            Process p =
+                    new ProcessBuilder(
+                                    "/bin/sh", "-c", "route | grep '^default' | grep -o '[^ ]*$'")
+                            .start();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+            StringBuilder builder = new StringBuilder();
+            String line = null;
+            while (true) {
+                if (!((line = reader.readLine()) != null)) {
+                    break;
+                }
+                builder.append(line);
+                builder.append(System.getProperty("line.separator"));
+            }
+            String defaultNetworkInterface = "";
+            defaultNetworkInterface = builder.toString();
+            if (defaultNetworkInterface.equals("")) {
+                defaultNetworkInterface = "eth0";
+            }
+            // determine network speed of default network interface
+            p =
+                    new ProcessBuilder(
+                                    "/bin/sh",
+                                    "-c",
+                                    "cat /sys/class/net/" + defaultNetworkInterface + "/speed")
+                            .start();
+            reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+            builder = new StringBuilder();
+            while (true) {
+                if (!((line = reader.readLine()) != null)) {
+                    break;
+                }
+                builder.append(line);
+            }
+            networkSpeed = Integer.valueOf(builder.toString().replaceAll("[^0-9]", ""));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         SystemInfo si = new SystemInfo();
         HardwareAbstractionLayer hal = si.getHardware();
+        description.put("networkLinkSpeed", networkSpeed);
+        description.put("physicalCPUCores", hal.getProcessor().getPhysicalProcessorCount());
         description.put("totalMemory", hal.getMemory().getTotal());
         description.put("maxCPUFreq", hal.getProcessor().getMaxFreq());
         description.put(
