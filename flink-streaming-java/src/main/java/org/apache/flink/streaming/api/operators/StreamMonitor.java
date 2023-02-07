@@ -103,6 +103,12 @@ public class StreamMonitor<T> implements Serializable {
 
     public <T> void reportInput(T input, ExecutionConfig config) {
         try {
+            //            if (this.description.get("firstOperatorInQuery") != null
+            //                    && this.description.get("firstOperatorInQuery").equals(true)) {
+            //                // ToDo: DEBUG, reset timestamp in first operator to remove source lag
+            //                ((Tuple) input).setField(String.valueOf(System.currentTimeMillis()),
+            // 0);
+            //            }
             if (this.disableStreamMonitor) {
                 return;
             }
@@ -221,11 +227,9 @@ public class StreamMonitor<T> implements Serializable {
                 if (this.operator instanceof WrappingFunction) {
                     double joinSelectivity =
                             (double) this.joinPartners / (double) (this.joinSize1 * this.joinSize2);
-                    //                    Double average =
-                    //                            this.joinSelectivities.stream()
-                    //                                    .mapToDouble(val -> val)
-                    //                                    .average()
-                    //                                    .orElse(0.0);
+                    if (Double.isNaN(joinSelectivity)) {
+                        joinSelectivity = 0;
+                    }
                     description.put("realSelectivity", joinSelectivity);
                 }
                 if (this.operator instanceof StreamFilter) {
@@ -238,7 +242,11 @@ public class StreamMonitor<T> implements Serializable {
                                     .mapToDouble(val -> val)
                                     .average()
                                     .orElse(0.0);
-                    description.put("realSelectivity", ((double) 1 / averageWindowLength));
+                    if (averageWindowLength == 0) {
+                        description.put("realSelectivity", 0.0);
+                    } else {
+                        description.put("realSelectivity", ((double) 1 / averageWindowLength));
+                    }
                 }
                 addHostAndTaskMetrics(description);
                 addHardwareMetrics(description);

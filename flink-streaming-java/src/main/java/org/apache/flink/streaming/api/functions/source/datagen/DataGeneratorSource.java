@@ -20,9 +20,6 @@ package org.apache.flink.streaming.api.functions.source.datagen;
 
 import org.apache.flink.annotation.Experimental;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.state.FunctionInitializationContext;
-import org.apache.flink.runtime.state.FunctionSnapshotContext;
-import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.functions.source.RichParallelSourceFunction;
 
 import org.slf4j.Logger;
@@ -35,8 +32,7 @@ import javax.annotation.Nullable;
  * streaming job and performance testing. It is stateful, re-scalable, possibly in parallel.
  */
 @Experimental
-public class DataGeneratorSource<T> extends RichParallelSourceFunction<T>
-        implements CheckpointedFunction {
+public class DataGeneratorSource<T> extends RichParallelSourceFunction<T> {
 
     private static final long serialVersionUID = 1L;
 
@@ -47,12 +43,9 @@ public class DataGeneratorSource<T> extends RichParallelSourceFunction<T>
     private final long rowsPerSecond;
 
     @Nullable private final Long numberOfRows;
-
-    private transient int outputSoFar;
-
-    private transient int toOutput;
-
     transient volatile boolean isRunning;
+    private transient int outputSoFar;
+    private transient int toOutput;
 
     /**
      * Creates a source that emits records by {@link DataGenerator} without controlling emit rate.
@@ -88,17 +81,8 @@ public class DataGeneratorSource<T> extends RichParallelSourceFunction<T>
             final int baseSize = (int) (numberOfRows / stepSize);
             toOutput = (numberOfRows % stepSize > taskIdx) ? baseSize + 1 : baseSize;
         }
-    }
-
-    @Override
-    public void initializeState(FunctionInitializationContext context) throws Exception {
-        this.generator.open("DataGenerator", context, getRuntimeContext());
+        this.generator.open("DataGenerator", null, getRuntimeContext());
         this.isRunning = true;
-    }
-
-    @Override
-    public void snapshotState(FunctionSnapshotContext context) throws Exception {
-        this.generator.snapshotState(context);
     }
 
     @Override
@@ -109,13 +93,9 @@ public class DataGeneratorSource<T> extends RichParallelSourceFunction<T>
 
         while (isRunning) {
             for (int i = 0; i < taskRowsPerSecond; i++) {
-                if (isRunning
-                        && generator.hasNext()
-                        && (numberOfRows == null || outputSoFar < toOutput)) {
-                    synchronized (ctx.getCheckpointLock()) {
-                        outputSoFar++;
-                        ctx.collect(this.generator.next());
-                    }
+                if (isRunning) {
+                    outputSoFar++;
+                    ctx.collect(this.generator.next());
                 } else {
                     return;
                 }
