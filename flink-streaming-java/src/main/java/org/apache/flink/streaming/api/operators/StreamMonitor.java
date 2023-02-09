@@ -21,8 +21,11 @@ package org.apache.flink.streaming.api.operators;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.java.operators.translation.WrappingFunction;
 import org.apache.flink.api.java.tuple.Tuple;
-import org.apache.flink.runtime.metrics.groups.InternalOperatorMetricGroup;
+import org.apache.flink.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.streaming.api.datastream.CoGroupedStreams;
+import org.apache.flink.streaming.api.functions.source.RichParallelSourceFunction;
+import org.apache.flink.streaming.api.functions.source.RichSourceFunction;
+import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.runtime.operators.util.StreamMonitorMongoClient;
 import org.apache.flink.streaming.runtime.operators.windowing.WindowOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -87,8 +90,8 @@ public class StreamMonitor<T> implements Serializable {
         this.description = description;
         this.disableStreamMonitor = false;
         this.logger = LoggerFactory.getLogger("observation");
-        this.description.put("tupleWidthIn", -1);
-        this.description.put("tupleWidthOut", -1);
+        //        this.description.put("tupleWidthIn", -1);
+        //        this.description.put("tupleWidthOut", -1);
         this.initialized = false;
         this.outputInitialized = false;
         this.observationMade = false;
@@ -103,12 +106,6 @@ public class StreamMonitor<T> implements Serializable {
 
     public <T> void reportInput(T input, ExecutionConfig config) {
         try {
-            //            if (this.description.get("firstOperatorInQuery") != null
-            //                    && this.description.get("firstOperatorInQuery").equals(true)) {
-            //                // ToDo: DEBUG, reset timestamp in first operator to remove source lag
-            //                ((Tuple) input).setField(String.valueOf(System.currentTimeMillis()),
-            // 0);
-            //            }
             if (this.disableStreamMonitor) {
                 return;
             }
@@ -216,14 +213,16 @@ public class StreamMonitor<T> implements Serializable {
                     description.put(
                             "tupleWidthIn", joinInputWidthLeftSide + joinInputWidthRightSide);
 
-                } else {
+                } else if (!(this.operator instanceof SourceFunction)) {
                     // it's not a join operator, so the tupleWidthIn can be put into description
                     description.put("tupleWidthIn", tupleWidthIn);
                 }
                 description.put(
                         "outputRate", ((double) this.outputCounter * 1e9 / (double) elapsedTime));
-                description.put(
-                        "inputRate", ((double) this.inputCounter * 1e9 / (double) elapsedTime));
+                if (!(this.operator instanceof SourceFunction)) {
+                    description.put(
+                            "inputRate", ((double) this.inputCounter * 1e9 / (double) elapsedTime));
+                }
                 if (this.operator instanceof WrappingFunction) {
                     double joinSelectivity =
                             (double) this.joinPartners / (double) (this.joinSize1 * this.joinSize2);
@@ -269,11 +268,18 @@ public class StreamMonitor<T> implements Serializable {
     }
 
     private HashMap<String, Object> addHostAndTaskMetrics(HashMap<String, Object> description) {
-        InternalOperatorMetricGroup metrics;
+        OperatorMetricGroup metrics;
         // get metrics from operator. In case of a join, get the metrics instead from
         // the window operator
         if (this.operator instanceof WrappingFunction && this.windowOperator != null) {
             metrics = this.windowOperator.metrics;
+        } else if (this.operator instanceof RichSourceFunction) {
+            metrics = ((RichSourceFunction) this.operator).getRuntimeContext().getMetricGroup();
+        } else if (this.operator instanceof RichParallelSourceFunction) {
+            metrics =
+                    ((RichParallelSourceFunction) this.operator)
+                            .getRuntimeContext()
+                            .getMetricGroup();
         } else {
             metrics = ((AbstractStreamOperator) this.operator).metrics;
         }

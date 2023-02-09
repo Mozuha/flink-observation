@@ -21,11 +21,14 @@ package org.apache.flink.streaming.api.functions.source.datagen;
 import org.apache.flink.annotation.Experimental;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.source.RichParallelSourceFunction;
+import org.apache.flink.streaming.api.operators.StreamMonitor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
+
+import java.util.HashMap;
 
 /**
  * A data generator source that abstract data generator. It can be used to easy startup/test for
@@ -39,13 +42,13 @@ public class DataGeneratorSource<T> extends RichParallelSourceFunction<T> {
     private static final Logger LOG = LoggerFactory.getLogger(DataGeneratorSource.class);
 
     private final DataGenerator<T> generator;
-
     private final long rowsPerSecond;
-
     @Nullable private final Long numberOfRows;
     transient volatile boolean isRunning;
+    private StreamMonitor<DataGeneratorSource<T>> streamMonitor;
     private transient int outputSoFar;
     private transient int toOutput;
+    private HashMap<String, Object> description;
 
     /**
      * Creates a source that emits records by {@link DataGenerator} without controlling emit rate.
@@ -53,7 +56,12 @@ public class DataGeneratorSource<T> extends RichParallelSourceFunction<T> {
      * @param generator data generator.
      */
     public DataGeneratorSource(DataGenerator<T> generator) {
-        this(generator, Long.MAX_VALUE, null);
+        this(generator, Long.MAX_VALUE, null, null);
+    }
+
+    public DataGeneratorSource(
+            DataGenerator<T> generator, long rowsPerSecond, @Nullable Long numberOfRows) {
+        this(generator, rowsPerSecond, numberOfRows, null);
     }
 
     /**
@@ -64,10 +72,14 @@ public class DataGeneratorSource<T> extends RichParallelSourceFunction<T> {
      * @param numberOfRows Total number of rows to output.
      */
     public DataGeneratorSource(
-            DataGenerator<T> generator, long rowsPerSecond, @Nullable Long numberOfRows) {
+            DataGenerator<T> generator,
+            long rowsPerSecond,
+            @Nullable Long numberOfRows,
+            HashMap<String, Object> description) {
         this.generator = generator;
         this.rowsPerSecond = rowsPerSecond;
         this.numberOfRows = numberOfRows;
+        this.description = description;
     }
 
     @Override
@@ -81,6 +93,7 @@ public class DataGeneratorSource<T> extends RichParallelSourceFunction<T> {
             final int baseSize = (int) (numberOfRows / stepSize);
             toOutput = (numberOfRows % stepSize > taskIdx) ? baseSize + 1 : baseSize;
         }
+        this.streamMonitor = new StreamMonitor<>(this.description, this);
         this.generator.open("DataGenerator", null, getRuntimeContext());
         this.isRunning = true;
     }
@@ -95,7 +108,11 @@ public class DataGeneratorSource<T> extends RichParallelSourceFunction<T> {
             for (int i = 0; i < taskRowsPerSecond; i++) {
                 if (isRunning) {
                     outputSoFar++;
-                    ctx.collect(this.generator.next());
+                    T nextTuple = this.generator.next();
+                    this.streamMonitor.reportInput(
+                            nextTuple, getRuntimeContext().getExecutionConfig());
+                    ctx.collect(nextTuple);
+                    this.streamMonitor.reportOutput(nextTuple);
                 } else {
                     return;
                 }
