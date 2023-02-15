@@ -409,16 +409,6 @@ public class EvictingWindowOperator<K, IN, OUT, W extends Window>
             throws Exception {
         timestampedCollector.setAbsoluteTimestamp(window.maxTimestamp());
 
-        // Flink-Observation: report window length and output
-        // TODO: needs to be checked if functional
-        try {
-            this.streamMonitor.reportWindowLength(contents);
-            if (this.description != null) {
-                this.streamMonitor.reportOutput(contents);
-            }
-        } catch (Exception ignored) {
-        }
-
         // Work around type system restrictions...
         FluentIterable<TimestampedValue<IN>> recordsWithTimestamp =
                 FluentIterable.from(contents)
@@ -441,6 +431,16 @@ public class EvictingWindowOperator<K, IN, OUT, W extends Window>
                         });
 
         processContext.window = triggerContext.window;
+
+        // Flink-Observation: report window length and output
+        try {
+            this.streamMonitor.reportWindowLength(contents);
+            if (this.description != null) {
+                this.streamMonitor.reportOutput(contents);
+            }
+        } catch (Exception ignored) {
+        }
+
         userFunction.process(
                 triggerContext.key,
                 triggerContext.window,
@@ -469,6 +469,39 @@ public class EvictingWindowOperator<K, IN, OUT, W extends Window>
             mergingWindows.retireWindow(window);
             mergingWindows.persist();
         }
+    }
+
+    @Override
+    public void open() throws Exception {
+        super.open();
+
+        evictorContext = new EvictorContext(null, null);
+        evictingWindowState =
+                (InternalListState<K, W, StreamRecord<IN>>)
+                        getOrCreateKeyedState(windowSerializer, evictingWindowStateDescriptor);
+    }
+
+    @Override
+    public void close() throws Exception {
+        super.close();
+        evictorContext = null;
+    }
+
+    @VisibleForTesting
+    public Evictor<? super IN, ? super W> getEvictor() {
+        return evictor;
+    }
+
+    // ------------------------------------------------------------------------
+    // Getters for testing
+    // ------------------------------------------------------------------------
+
+    @Override
+    @VisibleForTesting
+    @SuppressWarnings("unchecked, rawtypes")
+    public StateDescriptor<? extends AppendingState<IN, Iterable<IN>>, ?> getStateDescriptor() {
+        return (StateDescriptor<? extends AppendingState<IN, Iterable<IN>>, ?>)
+                evictingWindowStateDescriptor;
     }
 
     /**
@@ -512,38 +545,5 @@ public class EvictingWindowOperator<K, IN, OUT, W extends Window>
         void evictAfter(Iterable<TimestampedValue<IN>> elements, int size) {
             evictor.evictAfter((Iterable) elements, size, window, this);
         }
-    }
-
-    @Override
-    public void open() throws Exception {
-        super.open();
-
-        evictorContext = new EvictorContext(null, null);
-        evictingWindowState =
-                (InternalListState<K, W, StreamRecord<IN>>)
-                        getOrCreateKeyedState(windowSerializer, evictingWindowStateDescriptor);
-    }
-
-    @Override
-    public void close() throws Exception {
-        super.close();
-        evictorContext = null;
-    }
-
-    // ------------------------------------------------------------------------
-    // Getters for testing
-    // ------------------------------------------------------------------------
-
-    @VisibleForTesting
-    public Evictor<? super IN, ? super W> getEvictor() {
-        return evictor;
-    }
-
-    @Override
-    @VisibleForTesting
-    @SuppressWarnings("unchecked, rawtypes")
-    public StateDescriptor<? extends AppendingState<IN, Iterable<IN>>, ?> getStateDescriptor() {
-        return (StateDescriptor<? extends AppendingState<IN, Iterable<IN>>, ?>)
-                evictingWindowStateDescriptor;
     }
 }
