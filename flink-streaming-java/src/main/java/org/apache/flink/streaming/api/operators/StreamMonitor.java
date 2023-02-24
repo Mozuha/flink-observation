@@ -31,8 +31,6 @@ import org.apache.flink.streaming.runtime.operators.windowing.WindowOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import org.json.simple.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import oshi.SystemInfo;
 import oshi.hardware.CentralProcessor;
 import oshi.hardware.HardwareAbstractionLayer;
@@ -63,7 +61,6 @@ public class StreamMonitor<T> implements Serializable {
     private final long duration = 30_000_000_000L; // 30 seconds, starting after first call
     private final T operator;
     private final ArrayList<Integer> windowLengths;
-    private final Logger logger;
     private final boolean disableStreamMonitor;
     private WindowOperator windowOperator = null;
     private boolean initialized;
@@ -89,7 +86,6 @@ public class StreamMonitor<T> implements Serializable {
         }
         this.description = description;
         this.disableStreamMonitor = false;
-        this.logger = LoggerFactory.getLogger("observation");
         //        this.description.put("tupleWidthIn", -1);
         //        this.description.put("tupleWidthOut", -1);
         this.initialized = false;
