@@ -64,5 +64,4 @@ tools/japicmp-output
 /docs/.hugo_build.lock
 
 /flink-streaming-java/.idea
-/flink-runtime-web/web-dashboard/package-lock.json
 /.idea
